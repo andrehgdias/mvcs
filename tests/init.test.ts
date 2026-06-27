@@ -5,17 +5,17 @@ import path from "path";
 
 describe("init", function () {
   it("creates .mvcs directory", async function () {
-    const calls: (string | URL)[] = [];
-
+    const mockMkdir = mock.fn((_path: string) => {});
     const fs: FsWrapper = {
-      mkdir: mock.fn((path) => calls.push(path)),
+      mkdir: mockMkdir,
     };
 
     await init(fs);
 
-    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(mockMkdir.mock.callCount(), 1);
 
-    const pathComponents = path.parse(calls[0]!.toString());
+    const args = mockMkdir.mock.calls.at(0)!.arguments;
+    const pathComponents = path.parse(args.at(0)!);
     assert.strictEqual(pathComponents.name, MVCS_REPOSITORY_NAME);
   });
 
