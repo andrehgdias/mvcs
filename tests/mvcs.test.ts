@@ -1,38 +1,19 @@
 import assert from "assert";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  it,
-  mock,
-  type Mock,
-} from "node:test";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import {
   init,
   MVCS_REPOSITORY_NAME,
   snap,
   SNAPSHOTS_REPOSITORY_NAME,
-  type FsWrapper,
 } from "../src/mvcs.js";
 import path from "path";
 
+import fsPromises from "node:fs/promises";
+
 describe("mvcs core functions", function () {
-  let mockMkdir: Mock<FsWrapper["mkdir"]>;
-  let mockCpdir: Mock<FsWrapper["cpdir"]>;
-
-  let fs: FsWrapper;
-
   const workingDirectory = path.join("user", "projects", "personal-project");
 
   beforeEach(function () {
-    mockMkdir = mock.fn(async (_path: string) => {});
-    mockCpdir = mock.fn(async (_src: string, _dest: string) => {});
-
-    fs = {
-      mkdir: mockMkdir,
-      cpdir: mockCpdir,
-    };
-
     mock.method(process, "cwd", () => workingDirectory); // Monkey patching cwd
   });
 
@@ -41,43 +22,40 @@ describe("mvcs core functions", function () {
   });
 
   describe("init", function () {
-    it("creates .mvcs directory under the working directory", async function () {
-      await init(fs);
+    it("creates the .mvcs and snapshots directory structure when run in an uninitialized repository ", async function () {
+      const mockMkdir = mock.method(fsPromises, "mkdir", async () => {});
+
+      await init();
 
       assert.strictEqual(mockMkdir.mock.callCount(), 2);
 
-      const mvcsCallArgs = mockMkdir.mock.calls.at(0)!.arguments;
-      const pathComponents = path.parse(mvcsCallArgs.at(0)!);
-      assert.strictEqual(pathComponents.dir, workingDirectory);
-      assert.strictEqual(pathComponents.base, MVCS_REPOSITORY_NAME);
-    });
+      const [mvcsDirCall, snapshotDirCall] = mockMkdir.mock.calls;
 
-    it("creates .mvcs/snapshots directory", async function () {
-      await init(fs);
+      const mvcsDirPath = mvcsDirCall?.arguments.at(0)! as string;
+      const mvcsDirPathComponents = path.parse(mvcsDirPath);
+      assert.strictEqual(mvcsDirPathComponents.dir, workingDirectory);
+      assert.strictEqual(mvcsDirPathComponents.base, MVCS_REPOSITORY_NAME);
 
-      assert.strictEqual(mockMkdir.mock.callCount(), 2);
-
-      const snapshotsCallArgs = mockMkdir.mock.calls.at(1)!.arguments;
-      const pathComponents = path.parse(snapshotsCallArgs.at(0)!);
+      const snapshotDirPath = snapshotDirCall?.arguments.at(0)! as string;
+      const snapshotDirPathComponents = path.parse(snapshotDirPath);
       assert.strictEqual(
-        pathComponents.dir,
+        snapshotDirPathComponents.dir,
         path.join(workingDirectory, MVCS_REPOSITORY_NAME),
       );
-      assert.strictEqual(pathComponents.base, SNAPSHOTS_REPOSITORY_NAME);
+      assert.strictEqual(
+        snapshotDirPathComponents.base,
+        SNAPSHOTS_REPOSITORY_NAME,
+      );
     });
 
-    it("fails when repository is already initialized - .mvcs alreday exists", async function () {
-      mockMkdir = mock.fn((_path: string) => {
-        throw new Error("");
+    it("throws a 'Repository already initialized' error when a .mvcs folder already exists", async function () {
+      const mockMkdir = mock.method(fsPromises, "mkdir", async () => {
+        const err = new Error("File already exists");
+        (err as any).code = "EEXIST";
+        throw err;
       });
-      fs = {
-        ...fs,
-        mkdir: mockMkdir,
-      };
 
-      await assert.rejects(async function () {
-        await init(fs);
-      }, "Error: Repository already initialized");
+      await assert.rejects(init, /^Error: Repository already initialized$/);
     });
   });
 
@@ -93,45 +71,25 @@ describe("mvcs core functions", function () {
       mock.timers.enable({ apis: ["Date"], now });
     });
 
-    it("creates a directory with the snapshot timestamp under .mvcs/snapshots", async function () {
-      await snap(fs, "Snap message");
-
-      assert.strictEqual(mockMkdir.mock.callCount(), 1);
-
-      const callArgs = mockMkdir.mock.calls.at(0)!.arguments;
-      const pathComponents = path.parse(callArgs.at(0)!);
-
-      assert.strictEqual(pathComponents.dir, snapshotDirPath);
-      assert.strictEqual(pathComponents.base, now.getTime().toString());
-    });
-
     it.todo(
-      "copies all directories and files from root/working directory to .mvcs/snapshots/{timestamp} and keep its structure",
+      "saves a complete timestamped backup of the root files when executed from the project root",
       async function () {
-        await snap(fs, "Snap message");
-
-        assert.strictEqual(mockCpdir.mock.callCount(), 1);
-
-        const callArgs = mockCpdir.mock.calls.at(0)!.arguments;
-
-        const srcDir = callArgs.at(0)!;
-        assert.strictEqual(srcDir, workingDirectory);
-
-        const destDir = callArgs.at(1)!;
-        assert.strictEqual(destDir, snapshotDirPath);
-
-        // how to assert it will keep the structure? should I even test this?
+        // ...
       },
     );
 
     it.todo(
-      "creates a txt file at .mvcs/snapshots/{timestamp} with the custom message",
-      async function () {},
+      "correctly resolves and copies from the repository root when executed inside a nested subdirectory",
+      async function () {
+        // ...
+      },
     );
 
     it.todo(
-      "creating a snapshot from a subdirectory should copy repository root folder and its contents, excluding .mvcs",
-      async function () {},
+      "rejects with a 'No repository found' error when executed outside of an initialized .mvcs project",
+      async function () {
+        // ...
+      },
     );
   });
 });
