@@ -1,12 +1,12 @@
 import path from "node:path";
 import fsPromises from "node:fs/promises";
+import os from "node:os";
 
 export const MVCS_REPOSITORY_NAME = ".mvcs";
 export const SNAPSHOTS_REPOSITORY_NAME = "snapshots";
 
 /**
  * Initialize the mvcs repository in the current working directory
- * @param fs File System node module
  */
 export async function init() {
   const mvcsDirPath = path.join(process.cwd(), MVCS_REPOSITORY_NAME);
@@ -30,14 +30,13 @@ export async function init() {
 }
 
 /**
- * Create a snapshot of the current working directory
- * @param fs File System node module
+ * Create a snapshot of the current working directory from the root of the mvcs repository
+ *
  * @param message Custom informative message about this snapshot
  */
 export async function snap(message: string) {
   // TODO Improvement: save only modified, new and removed
-  // * FEATURE: save full copy ignoring .mvcs
-  // create a snapshot folder with timestamp
+  // TODO Improvement: save changes on the relative path instead of the root of the repository
   const timestamp = Date.now().toString();
   const newSnapshotDir = path.join(
     process.cwd(),
@@ -45,7 +44,27 @@ export async function snap(message: string) {
     SNAPSHOTS_REPOSITORY_NAME,
     timestamp,
   );
-  await fsPromises.mkdir(newSnapshotDir);
-  // copy them and the structure to .mvcs/snapshots/timestamp
-  // write a txt file with the custom message
+
+  const tmpDir = await fsPromises.mkdtemp(
+    path.join(os.tmpdir(), timestamp + "_"),
+  );
+
+  await fsPromises.cp(process.cwd(), tmpDir, {
+    recursive: true,
+    filter: isNotMvcsDirectory,
+  });
+
+  await fsPromises.cp(tmpDir, newSnapshotDir, {
+    recursive: true,
+  });
+
+  const messageFileName = "snap_message.txt";
+  const messageFilePath = path.join(newSnapshotDir, messageFileName);
+  await fsPromises.writeFile(messageFilePath, message);
+}
+
+/** @VisibleForTesting */
+export function isNotMvcsDirectory(source: string) {
+  const srcComponents = path.parse(source);
+  return srcComponents.base !== MVCS_REPOSITORY_NAME;
 }
