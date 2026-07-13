@@ -63,8 +63,12 @@ export async function snap(message: string) {
   await fsPromises.writeFile(messageFilePath, message);
 }
 
-/** @VisibleForTesting */
+/**
+ * Return true ONLY if ".mvcs" is completely absent from the entire path tree
+ *
+ * @VisibleForTesting
+ * */
 export function isNotMvcsDirectory(source: string) {
-  const srcComponents = path.parse(source);
-  return srcComponents.base !== MVCS_REPOSITORY_NAME;
+  const pathComponents = source.split(path.sep);
+  return !pathComponents.includes(MVCS_REPOSITORY_NAME);
 }

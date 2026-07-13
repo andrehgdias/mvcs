@@ -64,10 +64,22 @@ describe("mvcs core functions", function () {
   });
 
   describe("helpers", function () {
-    it("isNotMvcsDirectory", function () {
-      assert.strictEqual(isNotMvcsDirectory("/dummy/.mvcS"), true);
+    it("filters out the .mvcs directory and all nested files or sub-directories within it", function () {
+      // True paths (Should be copied)
+      assert.strictEqual(isNotMvcsDirectory("/dummy/.mvcS"), true); // Case sensitive check passes
+      assert.strictEqual(
+        isNotMvcsDirectory("/very/deeply/nested/project/src/index.ts"),
+        true,
+      );
+
+      // False paths (Should NOT be copied)
       assert.strictEqual(
         isNotMvcsDirectory("/very/deeply/nested/project/.mvcs"),
+        false,
+      );
+      assert.strictEqual(isNotMvcsDirectory("/dummy/.mvcs/snapshots"), false);
+      assert.strictEqual(
+        isNotMvcsDirectory("/dummy/.mvcs/snapshots/foo/bar.txt"),
         false,
       );
     });
@@ -80,6 +92,8 @@ describe("mvcs core functions", function () {
       MVCS_REPOSITORY_NAME,
       SNAPSHOTS_REPOSITORY_NAME,
     );
+    const timestamp = now.getTime().toString();
+    const newSnapshotDirPath = path.join(snapshotDirPath, timestamp);
 
     beforeEach(function () {
       mock.timers.enable({ apis: ["Date"], now });
@@ -94,8 +108,6 @@ describe("mvcs core functions", function () {
         (tempPath: string) => tempPath,
       );
 
-      const timestamp = now.getTime().toString();
-      const newSnapshotDirPath = path.join(snapshotDirPath, timestamp);
       const customMessage = "My first snap test";
 
       await snap(customMessage);
