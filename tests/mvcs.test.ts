@@ -6,6 +6,7 @@ import {
   MVCS_REPOSITORY_NAME,
   snap,
   SNAPSHOTS_REPOSITORY_NAME,
+  MESSAGE_FILE_NAME,
 } from "../src/mvcs.js";
 import path from "path";
 
@@ -112,59 +113,114 @@ describe("mvcs core functions", function () {
 
       await snap(customMessage);
 
-      assert.strictEqual(mockMkdTemp.mock.callCount(), 1);
-      const [tempFullPath] = mockMkdTemp.mock.calls.at(0)!.arguments;
-      const tempPathComponents = path.parse(tempFullPath!);
-      assert.strictEqual(tempPathComponents.dir, tempDirectory);
-      assert.strictEqual(
-        tempPathComponents.base.startsWith(timestamp + "_"),
-        true,
+      assertValidSnapshotCreated({
+        mockCp,
+        mockMkdTemp,
+        mockWriteFile,
+        workingDirectory,
+        expectedTimestamp: timestamp,
+        expectedNewSnapshotDirPath: newSnapshotDirPath,
+        customMessage,
+      });
+    });
+
+    it("correctly resolves and copies from the repository root when executed inside a nested subdirectory", async function () {
+      const workingDirectory = path.join(
+        "user",
+        "projects",
+        "personal-project",
+        "nested-directory",
+      );
+      mock.method(process, "cwd", () => workingDirectory); // Monkey patching cwd
+
+      const mockCp = mock.method(fsPromises, "cp", () => {});
+      const mockWriteFile = mock.method(fsPromises, "writeFile", () => {});
+      const mockMkdTemp = mock.method(
+        fsPromises,
+        "mkdtemp",
+        (tempPath: string) => tempPath,
       );
 
-      assert.strictEqual(mockCp.mock.callCount(), 2);
-      const [tempDirCpCall, snapshotDirCall] = mockCp.mock.calls;
+      const customMessage = "My first snap test";
 
-      const [projectSource, tempDestination, tempCpOptions] =
-        tempDirCpCall!.arguments;
-      assert.strictEqual(projectSource, workingDirectory);
-      assert.strictEqual(tempDestination, tempFullPath);
-      assert.ok(tempCpOptions?.recursive);
-      assert.strictEqual(
-        tempCpOptions?.filter?.("/dummy", "destination"),
-        true,
-      );
-      assert.strictEqual(
-        tempCpOptions?.filter?.("/.mvcs", "destination"),
-        false,
-      );
+      await snap(customMessage);
 
-      const [tempSource, snapshotDestination, snapshotCpOptions] =
-        snapshotDirCall!.arguments;
-      assert.strictEqual(tempSource, tempFullPath);
-      assert.strictEqual(snapshotDestination, newSnapshotDirPath);
-      assert.deepStrictEqual(snapshotCpOptions, { recursive: true });
-
-      assert.strictEqual(mockWriteFile.mock.callCount(), 1);
-      const [filePath, message] = mockWriteFile.mock.calls.at(0)!.arguments;
-      const filePathComponents = path.parse(filePath as string);
-      const customMessageFileName = "snap_message.txt";
-      assert.strictEqual(filePathComponents.dir, newSnapshotDirPath);
-      assert.strictEqual(filePathComponents.base, customMessageFileName);
-      assert.strictEqual(message, customMessage);
+      assertValidSnapshotCreated({
+        mockCp,
+        mockMkdTemp,
+        mockWriteFile,
+        workingDirectory,
+        expectedTimestamp: timestamp,
+        expectedNewSnapshotDirPath: newSnapshotDirPath,
+        customMessage,
+      });
     });
 
     it.todo(
-      "correctly resolves and copies from the repository root when executed inside a nested subdirectory",
-      async function () {
-        // ...
-      },
-    );
-
-    it.todo(
-      "rejects with a 'No repository found' error when executed outside of an initialized .mvcs project",
+      "rejects with a 'Not a MVCS repository' error when executed outside of an initialized .mvcs project",
       async function () {
         // ...
       },
     );
   });
+
+  function assertValidSnapshotCreated({
+    mockMkdTemp,
+    mockCp,
+    mockWriteFile,
+    workingDirectory,
+    expectedTimestamp,
+    expectedNewSnapshotDirPath,
+    customMessage,
+  }: ValidSnapshotAssertionArgs) {
+    // Verify temp snapshot dir was created
+    assert.strictEqual(mockMkdTemp.mock.callCount(), 1);
+    const [tempFullPath] = mockMkdTemp.mock.calls.at(0)!.arguments;
+    const tempPathComponents = path.parse(tempFullPath!);
+    assert.strictEqual(tempPathComponents.dir, tempDirectory);
+    assert.strictEqual(
+      tempPathComponents.base.startsWith(expectedTimestamp + "_"),
+      true,
+    );
+
+    // Verify cp steps
+    assert.strictEqual(mockCp.mock.callCount(), 2);
+    const [tempDirCpCall, snapshotDirCall] = mockCp.mock.calls;
+
+    // Verify project was copied to temp dir
+    const [projectSource, tempDestination, tempCpOptions] =
+      tempDirCpCall!.arguments;
+    assert.strictEqual(projectSource, workingDirectory);
+    assert.strictEqual(tempDestination, tempFullPath);
+    assert.ok(tempCpOptions?.recursive);
+
+    // Verify copying ignored .mvcs directories
+    assert.strictEqual(tempCpOptions?.filter?.("/dummy", "destination"), true);
+    assert.strictEqual(tempCpOptions?.filter?.("/.mvcs", "destination"), false);
+
+    // Verify proj at temp dir is copied to .mvcs snapshots dir
+    const [tempSource, snapshotDestination, snapshotCpOptions] =
+      snapshotDirCall!.arguments;
+    assert.strictEqual(tempSource, tempFullPath);
+    assert.strictEqual(snapshotDestination, expectedNewSnapshotDirPath);
+    assert.deepStrictEqual(snapshotCpOptions, { recursive: true });
+
+    // Verify custom message is writen to its file
+    assert.strictEqual(mockWriteFile.mock.callCount(), 1);
+    const [filePath, message] = mockWriteFile.mock.calls.at(0)!.arguments;
+    const filePathComponents = path.parse(filePath.toString());
+    assert.strictEqual(filePathComponents.dir, expectedNewSnapshotDirPath);
+    assert.strictEqual(filePathComponents.base, MESSAGE_FILE_NAME);
+    assert.strictEqual(message, customMessage);
+  }
 });
+
+type ValidSnapshotAssertionArgs = {
+  mockMkdTemp: any;
+  mockCp: any;
+  mockWriteFile: any;
+  workingDirectory: string;
+  expectedTimestamp: string;
+  expectedNewSnapshotDirPath: string;
+  customMessage: string;
+};

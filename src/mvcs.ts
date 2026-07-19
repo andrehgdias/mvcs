@@ -4,6 +4,7 @@ import os from "node:os";
 
 export const MVCS_REPOSITORY_NAME = ".mvcs";
 export const SNAPSHOTS_REPOSITORY_NAME = "snapshots";
+export const MESSAGE_FILE_NAME = "snap_message.txt";
 
 /**
  * Initialize the mvcs repository in the current working directory
@@ -37,9 +38,16 @@ export async function init() {
 export async function snap(message: string) {
   // TODO Improvement: save only modified, new and removed
   // TODO Improvement: save changes on the relative path instead of the root of the repository
+  const workingDirectory = process.cwd();
+  const rootDirectory: string | null = await findMvcsRoot(workingDirectory);
+
+  if (rootDirectory === null) {
+    throw Error(`Not a MVCS repository: ${workingDirectory}`);
+  }
+
   const timestamp = Date.now().toString();
   const newSnapshotDir = path.join(
-    process.cwd(),
+    rootDirectory,
     MVCS_REPOSITORY_NAME,
     SNAPSHOTS_REPOSITORY_NAME,
     timestamp,
@@ -58,8 +66,7 @@ export async function snap(message: string) {
     recursive: true,
   });
 
-  const messageFileName = "snap_message.txt";
-  const messageFilePath = path.join(newSnapshotDir, messageFileName);
+  const messageFilePath = path.join(newSnapshotDir, MESSAGE_FILE_NAME);
   await fsPromises.writeFile(messageFilePath, message);
 }
 
@@ -71,4 +78,31 @@ export async function snap(message: string) {
 export function isNotMvcsDirectory(source: string) {
   const pathComponents = source.split(path.sep);
   return !pathComponents.includes(MVCS_REPOSITORY_NAME);
+}
+
+/**
+ * Recursivelly search upwards for the repository root folder (where .mvcs was created)
+ *
+ * @VisibleForTesting
+ * */
+export async function findMvcsRoot(
+  workingDirectory: string,
+): Promise<string | null> {
+  const workingDirContents = await fsPromises.readdir(workingDirectory);
+  const isMvcsRoot = workingDirContents.some(async (fileOrDir) => {
+    const stats = await fsPromises.stat(path.join(workingDirectory, fileOrDir));
+    return fileOrDir === MVCS_REPOSITORY_NAME && stats.isDirectory();
+  });
+
+  if (isMvcsRoot) {
+    return workingDirectory;
+  }
+
+  if (workingDirectory === path.parse(process.cwd()).root) {
+    return null;
+  }
+
+  const wdPathComponents = path.parse(workingDirectory);
+  const parentDir = wdPathComponents.dir;
+  return findMvcsRoot(parentDir);
 }
