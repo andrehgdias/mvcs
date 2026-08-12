@@ -39,15 +39,15 @@ export async function snap(message: string) {
   // TODO Improvement: save only modified, new and removed
   // TODO Improvement: save changes on the relative path instead of the root of the repository
   const workingDirectory = process.cwd();
-  const rootDirectory: string | null = await findMvcsRoot(workingDirectory);
+  const projectRootDirectory: string | null = await findMvcsRoot(workingDirectory);
 
-  if (rootDirectory === null) {
+  if (projectRootDirectory === null) {
     throw Error(`Not a MVCS repository: ${workingDirectory}`);
   }
 
   const timestamp = Date.now().toString();
   const newSnapshotDir = path.join(
-    rootDirectory,
+    projectRootDirectory,
     MVCS_REPOSITORY_NAME,
     SNAPSHOTS_REPOSITORY_NAME,
     timestamp,
@@ -57,7 +57,7 @@ export async function snap(message: string) {
     path.join(os.tmpdir(), timestamp + "_"),
   );
 
-  await fsPromises.cp(process.cwd(), tmpDir, {
+  await fsPromises.cp(projectRootDirectory, tmpDir, {
     recursive: true,
     filter: isNotMvcsDirectory,
   });

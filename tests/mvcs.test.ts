@@ -15,7 +15,7 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 
 describe("mvcs core functions", function () {
-  const workingDirectory = path.join(
+  const projectRoot = path.join(
     path.sep,
     "user",
     "projects",
@@ -24,7 +24,7 @@ describe("mvcs core functions", function () {
   const tempDirectory = path.join(path.sep, "user", "temp");
 
   beforeEach(function () {
-    mock.method(process, "cwd", () => workingDirectory); // Monkey patching cwd
+    mock.method(process, "cwd", () => projectRoot); // Monkey patching cwd
     mock.method(os, "tmpdir", () => tempDirectory); // Monkey patching tmpdir
   });
 
@@ -44,14 +44,14 @@ describe("mvcs core functions", function () {
 
       const mvcsDirPath = mvcsDirCall?.arguments.at(0)! as string;
       const mvcsDirPathComponents = path.parse(mvcsDirPath);
-      assert.strictEqual(mvcsDirPathComponents.dir, workingDirectory);
+      assert.strictEqual(mvcsDirPathComponents.dir, projectRoot);
       assert.strictEqual(mvcsDirPathComponents.base, MVCS_REPOSITORY_NAME);
 
       const snapshotDirPath = snapshotDirCall?.arguments.at(0)! as string;
       const snapshotDirPathComponents = path.parse(snapshotDirPath);
       assert.strictEqual(
         snapshotDirPathComponents.dir,
-        path.join(workingDirectory, MVCS_REPOSITORY_NAME),
+        path.join(projectRoot, MVCS_REPOSITORY_NAME),
       );
       assert.strictEqual(
         snapshotDirPathComponents.base,
@@ -175,7 +175,7 @@ describe("mvcs core functions", function () {
   describe("snap", function () {
     const now = new Date("2026-06-01");
     const snapshotDirPath = path.join(
-      workingDirectory,
+      projectRoot,
       MVCS_REPOSITORY_NAME,
       SNAPSHOTS_REPOSITORY_NAME,
     );
@@ -194,6 +194,25 @@ describe("mvcs core functions", function () {
         "mkdtemp",
         (tempPath: string) => tempPath,
       );
+      const contents = [
+          path.join(projectRoot, "file.txt"),
+          path.join(projectRoot, "dir"),
+          path.join(projectRoot, ".mvcs"),
+        ];
+
+        mock.method(fsPromises, "readdir", async () => contents);
+        mock.method(fsPromises, "stat", async (fileOrDir: string) => {
+          switch (fileOrDir) {
+            case contents[0]:
+              return { isDirectory: () => false };
+            case contents[1]:
+              return { isDirectory: () => true };
+            case contents[2]:
+              return { isDirectory: () => true };
+            default:
+              return { isDirectory: () => false };
+          }
+        });
 
       const customMessage = "My first snap test";
 
@@ -203,7 +222,7 @@ describe("mvcs core functions", function () {
         mockCp,
         mockMkdTemp,
         mockWriteFile,
-        workingDirectory,
+        projectRoot,
         expectedTimestamp: timestamp,
         expectedNewSnapshotDirPath: newSnapshotDirPath,
         customMessage,
@@ -212,20 +231,47 @@ describe("mvcs core functions", function () {
 
     it("correctly resolves and copies from the repository root when executed inside a nested subdirectory", async function () {
       const workingDirectory = path.join(
-        "user",
-        "projects",
-        "personal-project",
+       projectRoot,
         "nested-directory",
       );
       mock.method(process, "cwd", () => workingDirectory); // Monkey patching cwd
 
       const mockCp = mock.method(fsPromises, "cp", () => {});
       const mockWriteFile = mock.method(fsPromises, "writeFile", () => {});
-      const mockMkdTemp = mock.method(
+      const mockMkdTemp = mock.method(  
         fsPromises,
         "mkdtemp",
         (tempPath: string) => tempPath,
       );
+      const contents = [
+          path.join(projectRoot, "file.txt"),
+          path.join(projectRoot, "dir"),
+          path.join(projectRoot, ".mvcs"),
+        ];
+
+        mock.method(fsPromises, "readdir", async (dir: string) => {
+          switch (dir) {
+            case workingDirectory:
+              return [];
+            case projectRoot:
+              return contents;
+            default:
+              return [];
+          }
+        });
+        
+        mock.method(fsPromises, "stat", async (fileOrDir: string) => {
+          switch (fileOrDir) {
+            case contents[0]:
+              return { isDirectory: () => false };
+            case contents[1]:
+              return { isDirectory: () => true };
+            case contents[2]:
+              return { isDirectory: () => true };
+            default:
+              return { isDirectory: () => false };
+          }
+        });
 
       const customMessage = "My first snap test";
 
@@ -235,7 +281,7 @@ describe("mvcs core functions", function () {
         mockCp,
         mockMkdTemp,
         mockWriteFile,
-        workingDirectory,
+        projectRoot,
         expectedTimestamp: timestamp,
         expectedNewSnapshotDirPath: newSnapshotDirPath,
         customMessage,
@@ -254,7 +300,7 @@ describe("mvcs core functions", function () {
     mockMkdTemp,
     mockCp,
     mockWriteFile,
-    workingDirectory,
+    projectRoot,
     expectedTimestamp,
     expectedNewSnapshotDirPath,
     customMessage,
@@ -276,7 +322,7 @@ describe("mvcs core functions", function () {
     // Verify project was copied to temp dir
     const [projectSource, tempDestination, tempCpOptions] =
       tempDirCpCall!.arguments;
-    assert.strictEqual(projectSource, workingDirectory);
+    assert.strictEqual(projectSource, projectRoot);
     assert.strictEqual(tempDestination, tempFullPath);
     assert.ok(tempCpOptions?.recursive);
 
@@ -305,7 +351,7 @@ type ValidSnapshotAssertionArgs = {
   mockMkdTemp: any;
   mockCp: any;
   mockWriteFile: any;
-  workingDirectory: string;
+  projectRoot: string;
   expectedTimestamp: string;
   expectedNewSnapshotDirPath: string;
   customMessage: string;
