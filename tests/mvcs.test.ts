@@ -288,10 +288,16 @@ describe("mvcs core functions", function () {
       });
     });
 
-    it.todo(
+    it(
       "rejects with a 'Not a MVCS repository' error when executed outside of an initialized .mvcs project",
       async function () {
-        // ...
+        mock.method(fsPromises, "readdir", async (_dir: string) => [
+          path.join(projectRoot, "imagesDir"),
+        ]);
+        
+        mock.method(fsPromises, "stat", async (_fileOrDir: string) => ({ isDirectory: () => true }));
+
+        await assert.rejects(snap("Test snap message"), /^Error: Not a MVCS repository$/);
       },
     );
   });
