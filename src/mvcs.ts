@@ -88,12 +88,9 @@ export function isNotMvcsDirectory(source: string) {
 export async function findMvcsRoot(
   targetDirectory: string,
 ): Promise<string | null> {
-  const workingDirContents = await fsPromises.readdir(targetDirectory);
-  const isMvcsRoot = workingDirContents.some(async (fileOrDir) => {
-    const targetPath = path.join(targetDirectory, fileOrDir);
-    const stats = await fsPromises.stat(targetPath);
-    return fileOrDir === MVCS_REPOSITORY_NAME && stats.isDirectory();
-  });
+  const workingDirContents = await fsPromises.readdir(targetDirectory, {withFileTypes: true});
+
+  const isMvcsRoot = workingDirContents.some(result => result.name === MVCS_REPOSITORY_NAME && result.isDirectory());
 
   if (isMvcsRoot) {
     return targetDirectory;

@@ -15,17 +15,17 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 
 describe("mvcs core functions", function () {
-  const projectRoot = path.join(
+  const PROJECT_ROOT = path.join(
     path.sep,
     "user",
     "projects",
     "personal-project",
   );
-  const tempDirectory = path.join(path.sep, "user", "temp");
+  const TEMP_DIR = path.join(path.sep, "user", "temp");
 
   beforeEach(function () {
-    mock.method(process, "cwd", () => projectRoot); // Monkey patching cwd
-    mock.method(os, "tmpdir", () => tempDirectory); // Monkey patching tmpdir
+    mock.method(process, "cwd", () => PROJECT_ROOT); // Monkey patching cwd
+    mock.method(os, "tmpdir", () => TEMP_DIR); // Monkey patching tmpdir
   });
 
   afterEach(function () {
@@ -44,14 +44,14 @@ describe("mvcs core functions", function () {
 
       const mvcsDirPath = mvcsDirCall?.arguments.at(0)! as string;
       const mvcsDirPathComponents = path.parse(mvcsDirPath);
-      assert.strictEqual(mvcsDirPathComponents.dir, projectRoot);
+      assert.strictEqual(mvcsDirPathComponents.dir, PROJECT_ROOT);
       assert.strictEqual(mvcsDirPathComponents.base, MVCS_REPOSITORY_NAME);
 
       const snapshotDirPath = snapshotDirCall?.arguments.at(0)! as string;
       const snapshotDirPathComponents = path.parse(snapshotDirPath);
       assert.strictEqual(
         snapshotDirPathComponents.dir,
-        path.join(projectRoot, MVCS_REPOSITORY_NAME),
+        path.join(PROJECT_ROOT, MVCS_REPOSITORY_NAME),
       );
       assert.strictEqual(
         snapshotDirPathComponents.base,
@@ -70,112 +70,10 @@ describe("mvcs core functions", function () {
     });
   });
 
-  describe("helpers", function () {
-    it("filters out the .mvcs directory and all nested files or sub-directories within it", function () {
-      // True paths (Should be copied)
-      assert.strictEqual(isNotMvcsDirectory("/dummy/.mvcS"), true); // Case sensitive check passes
-      assert.strictEqual(
-        isNotMvcsDirectory("/very/deeply/nested/project/src/index.ts"),
-        true,
-      );
-
-      // False paths (Should NOT be copied)
-      assert.strictEqual(
-        isNotMvcsDirectory("/very/deeply/nested/project/.mvcs"),
-        false,
-      );
-      assert.strictEqual(isNotMvcsDirectory("/dummy/.mvcs/snapshots"), false);
-      assert.strictEqual(
-        isNotMvcsDirectory("/dummy/.mvcs/snapshots/foo/bar.txt"),
-        false,
-      );
-    });
-
-    describe("findMvcsRoot", function () {
-      it("finds mvcs directory at current location", async function () {
-        const currentDirectory = "/my/nested/project";
-        const contents = [
-          path.join(currentDirectory, "file.txt"),
-          path.join(currentDirectory, "dir"),
-          path.join(currentDirectory, ".mvcs"),
-        ];
-
-        mock.method(fsPromises, "readdir", async () => contents);
-        mock.method(fsPromises, "stat", async (fileOrDir: string) => {
-          switch (fileOrDir) {
-            case contents[0]:
-              return { isDirectory: () => false };
-            case contents[1]:
-              return { isDirectory: () => true };
-            case contents[2]:
-              return { isDirectory: () => true };
-            default:
-              return { isDirectory: () => false };
-          }
-        });
-
-        const mvcsPath = await findMvcsRoot(currentDirectory);
-
-        assert.strictEqual(mvcsPath, currentDirectory);
-      });
-
-      it("finds mvcs directory three levels above current location", async function () {
-        const mvcsDirectoryLocation = "/my/nested/project";
-        const currentDirectory = mvcsDirectoryLocation + "/lvl1/lvl2/lvl3";
-        const contents = [
-          path.join(currentDirectory, "file.txt"),
-          path.join(currentDirectory, "dir"),
-          path.join(currentDirectory, ".mvcs"),
-        ];
-
-        mock.method(process, "cwd", () => currentDirectory); // !fix mock cwd for each level
-        mock.method(fsPromises, "readdir", async (dir: string) => {
-          switch (dir) {
-            case path.join(mvcsDirectoryLocation, "lvl1"):
-            case path.join(mvcsDirectoryLocation, "lvl1", "lvl2"):
-            case path.join(mvcsDirectoryLocation, "lvl1", "lvl2", "lvl3"):
-              return [];
-            case mvcsDirectoryLocation:
-              return contents;
-            default:
-              return [];
-          }
-        });
-        mock.method(fsPromises, "stat", async (fileOrDir: string) => {
-          switch (fileOrDir) {
-            case contents[0]:
-              return { isDirectory: () => false };
-            case contents[1]:
-              return { isDirectory: () => true };
-            case contents[2]:
-              return { isDirectory: () => true };
-            default:
-              return { isDirectory: () => false };
-          }
-        });
-
-        const mvcsPath = await findMvcsRoot(currentDirectory);
-
-        assert.strictEqual(mvcsPath, mvcsDirectoryLocation);
-      });
-
-      it("cannot find a mvcs directory", async function () {
-        const currentDirectory = "/my/nested/unintilialized/empty/project";
-
-        mock.method(fsPromises, "readdir", async () => []);
-        mock.method(fsPromises, "stat", async () => {});
-
-        const mvcsPath = await findMvcsRoot(currentDirectory);
-
-        assert.strictEqual(mvcsPath, null);
-      });
-    });
-  });
-
   describe("snap", function () {
     const now = new Date("2026-06-01");
     const snapshotDirPath = path.join(
-      projectRoot,
+      PROJECT_ROOT,
       MVCS_REPOSITORY_NAME,
       SNAPSHOTS_REPOSITORY_NAME,
     );
@@ -194,25 +92,12 @@ describe("mvcs core functions", function () {
         "mkdtemp",
         (tempPath: string) => tempPath,
       );
-      const contents = [
-          path.join(projectRoot, "file.txt"),
-          path.join(projectRoot, "dir"),
-          path.join(projectRoot, ".mvcs"),
-        ];
 
-        mock.method(fsPromises, "readdir", async () => contents);
-        mock.method(fsPromises, "stat", async (fileOrDir: string) => {
-          switch (fileOrDir) {
-            case contents[0]:
-              return { isDirectory: () => false };
-            case contents[1]:
-              return { isDirectory: () => true };
-            case contents[2]:
-              return { isDirectory: () => true };
-            default:
-              return { isDirectory: () => false };
-          }
-        });
+      mock.method(fsPromises, "readdir", async () => [
+        { name: "file.txt", isDirectory: () => false },
+        { name: "dir", isDirectory: () => true },
+        { name: ".mvcs", isDirectory: () => true },
+      ]);
 
       const customMessage = "My first snap test";
 
@@ -222,7 +107,7 @@ describe("mvcs core functions", function () {
         mockCp,
         mockMkdTemp,
         mockWriteFile,
-        projectRoot,
+        projectRoot: PROJECT_ROOT,
         expectedTimestamp: timestamp,
         expectedNewSnapshotDirPath: newSnapshotDirPath,
         customMessage,
@@ -230,48 +115,30 @@ describe("mvcs core functions", function () {
     });
 
     it("correctly resolves and copies from the repository root when executed inside a nested subdirectory", async function () {
-      const workingDirectory = path.join(
-       projectRoot,
-        "nested-directory",
-      );
+      const workingDirectory = path.join(PROJECT_ROOT, "nested-directory");
       mock.method(process, "cwd", () => workingDirectory); // Monkey patching cwd
 
       const mockCp = mock.method(fsPromises, "cp", () => {});
       const mockWriteFile = mock.method(fsPromises, "writeFile", () => {});
-      const mockMkdTemp = mock.method(  
+      const mockMkdTemp = mock.method(
         fsPromises,
         "mkdtemp",
         (tempPath: string) => tempPath,
       );
-      const contents = [
-          path.join(projectRoot, "file.txt"),
-          path.join(projectRoot, "dir"),
-          path.join(projectRoot, ".mvcs"),
-        ];
 
-        mock.method(fsPromises, "readdir", async (dir: string) => {
-          switch (dir) {
-            case workingDirectory:
-              return [];
-            case projectRoot:
-              return contents;
-            default:
-              return [];
-          }
-        });
-        
-        mock.method(fsPromises, "stat", async (fileOrDir: string) => {
-          switch (fileOrDir) {
-            case contents[0]:
-              return { isDirectory: () => false };
-            case contents[1]:
-              return { isDirectory: () => true };
-            case contents[2]:
-              return { isDirectory: () => true };
-            default:
-              return { isDirectory: () => false };
-          }
-        });
+      mock.method(fsPromises, "readdir", async (dir: string) => {
+        switch (dir) {
+          case PROJECT_ROOT:
+            return [
+              { name: "file.txt", isDirectory: () => false },
+              { name: "dir", isDirectory: () => true },
+              { name: ".mvcs", isDirectory: () => true },
+            ];
+          case workingDirectory:
+          default:
+            return [];
+        }
+      });
 
       const customMessage = "My first snap test";
 
@@ -281,25 +148,23 @@ describe("mvcs core functions", function () {
         mockCp,
         mockMkdTemp,
         mockWriteFile,
-        projectRoot,
+        projectRoot: PROJECT_ROOT,
         expectedTimestamp: timestamp,
         expectedNewSnapshotDirPath: newSnapshotDirPath,
         customMessage,
       });
     });
 
-    it(
-      "rejects with a 'Not a MVCS repository' error when executed outside of an initialized .mvcs project",
-      async function () {
-        mock.method(fsPromises, "readdir", async (_dir: string) => [
-          path.join(projectRoot, "imagesDir"),
-        ]);
-        
-        mock.method(fsPromises, "stat", async (_fileOrDir: string) => ({ isDirectory: () => true }));
+    it("rejects with a 'Not a MVCS repository' error when executed outside of an initialized .mvcs project", async function () {
+      mock.method(fsPromises, "readdir", async (_dir: string) => [
+        { name: "imagesDir", isDirectory: () => true },
+      ]);
 
-        await assert.rejects(snap("Test snap message"), /^Error: Not a MVCS repository$/);
-      },
-    );
+      await assert.rejects(
+        snap("Test snap message"),
+        `Error: Not a MVCS repository: ${path.join(PROJECT_ROOT, "imagesDir")}`,
+      );
+    });
   });
 
   function assertValidSnapshotCreated({
@@ -315,7 +180,7 @@ describe("mvcs core functions", function () {
     assert.strictEqual(mockMkdTemp.mock.callCount(), 1);
     const [tempFullPath] = mockMkdTemp.mock.calls.at(0)!.arguments;
     const tempPathComponents = path.parse(tempFullPath!);
-    assert.strictEqual(tempPathComponents.dir, tempDirectory);
+    assert.strictEqual(tempPathComponents.dir, TEMP_DIR);
     assert.strictEqual(
       tempPathComponents.base.startsWith(expectedTimestamp + "_"),
       true,
@@ -351,6 +216,93 @@ describe("mvcs core functions", function () {
     assert.strictEqual(filePathComponents.base, MESSAGE_FILE_NAME);
     assert.strictEqual(message, customMessage);
   }
+});
+
+describe("helpers", function () {
+  describe("isNotMvcsDirectory", function () {
+    it("filters out the .mvcs directory and all nested files or sub-directories within it", function () {
+      // True paths (Should be copied)
+      assert.strictEqual(isNotMvcsDirectory("/dummy/.mvcS"), true); // Case sensitive check passes
+      assert.strictEqual(
+        isNotMvcsDirectory("/very/deeply/nested/project/src/index.ts"),
+        true,
+      );
+
+      // False paths (Should NOT be copied)
+      assert.strictEqual(
+        isNotMvcsDirectory("/very/deeply/nested/project/.mvcs"),
+        false,
+      );
+      assert.strictEqual(isNotMvcsDirectory("/dummy/.mvcs/snapshots"), false);
+      assert.strictEqual(
+        isNotMvcsDirectory("/dummy/.mvcs/snapshots/foo/bar.txt"),
+        false,
+      );
+    });
+  });
+
+  describe("findMvcsRoot", function () {
+    it("finds mvcs directory at current location", async function () {
+      const currentDirectory = "/my/nested/project";
+      const contents = [
+        { name: "file.txt", isDirectory: () => false },
+        { name: "dir", isDirectory: () => true },
+        { name: ".mvcs", isDirectory: () => true },
+      ];
+
+      mock.method(fsPromises, "readdir", async () => contents);
+
+      const mvcsPath = await findMvcsRoot(currentDirectory);
+
+      assert.strictEqual(mvcsPath, currentDirectory);
+    });
+
+    it("finds mvcs directory three levels above current location", async function () {
+      const mvcsDirectoryLocation = "/my/nested/project";
+      const currentDirectory = mvcsDirectoryLocation + "/lvl1/lvl2/lvl3";
+
+      mock.method(process, "cwd", () => currentDirectory); // !fix mock cwd for each level
+      mock.method(fsPromises, "readdir", async (dir: string) => {
+        switch (dir) {
+          case mvcsDirectoryLocation:
+            return [
+              { name: "file.txt", isDirectory: () => false },
+              { name: "dir", isDirectory: () => true },
+              { name: ".mvcs", isDirectory: () => true },
+            ];
+          default:
+            return [];
+        }
+      });
+
+      const mvcsPath = await findMvcsRoot(currentDirectory);
+
+      assert.strictEqual(mvcsPath, mvcsDirectoryLocation);
+    });
+
+    it("cannot find a mvcs directory on a empty directory", async function () {
+      mock.method(fsPromises, "readdir", async () => []);
+
+      const mvcsPath = await findMvcsRoot(
+        "/my/nested/unintilialized/empty/project",
+      );
+
+      assert.strictEqual(mvcsPath, null);
+    });
+
+    it("cannot find a mvcs directory on a populated directory", async function () {
+      mock.method(fsPromises, "readdir", async () => [
+        { name: "myDir", isDirectory: () => true },
+        { name: "cat.png", isDirectory: () => false },
+      ]);
+
+      const mvcsPath = await findMvcsRoot(
+        "/my/nested/unintilialized/empty/project",
+      );
+
+      assert.strictEqual(mvcsPath, null);
+    });
+  });
 });
 
 type ValidSnapshotAssertionArgs = {
