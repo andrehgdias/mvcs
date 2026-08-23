@@ -2,7 +2,10 @@
   "name": "mini-vcs",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "cli.js",
+  "bin": {
+    "mvcs": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsx --test './tests/**/*.test.ts'"
