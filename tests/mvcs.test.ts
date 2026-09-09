@@ -8,11 +8,14 @@ import {
   SNAPSHOTS_REPOSITORY_NAME,
   MESSAGE_FILE_NAME,
   findMvcsRoot,
+  log,
 } from "../src/mvcs.js";
 import path from "path";
 
-import fsPromises from "node:fs/promises";
+import fsPromises, { readFile } from "node:fs/promises";
 import os from "node:os";
+import { dir } from "node:console";
+import { toNamespacedPath } from "node:path";
 
 describe("mvcs core functions", function () {
   const PROJECT_ROOT = path.join(
@@ -160,10 +163,118 @@ describe("mvcs core functions", function () {
         { name: "imagesDir", isDirectory: () => true },
       ]);
 
-      await assert.rejects(
-        snap("Test snap message"),
-        `Error: Not a MVCS repository: ${path.join(PROJECT_ROOT, "imagesDir")}`,
-      );
+      await assert.rejects(snap("Test snap message"), {
+        message: `Not a MVCS repository: ${PROJECT_ROOT}`,
+      });
+    });
+  });
+
+  describe("log", function () {
+    it("returns empty list when there are no snaphost", async function () {
+      mock.method(fsPromises, "readdir", (dirPath: string) => {
+        switch (dirPath) {
+          case PROJECT_ROOT:
+            return [{ name: ".mvcs", isDirectory: () => true }];
+          default:
+            return [];
+        }
+      });
+
+      const snapshots = await log();
+
+      assert.deepStrictEqual(snapshots, new Map([]));
+    });
+
+    it("returns all snapshots in a oredered list with newest first when there are saved snapshots", async function () {
+      const now = new Date(2026, 8, 8, 13, 0);
+
+      const snapOne: [string, string] = [
+        now.getTime().toString(),
+        "First snap message",
+      ];
+      const snapTwo: [string, string] = [
+        new Date(now).setHours(15).toString(),
+        "Second snap message",
+      ];
+
+      mock.method(fsPromises, "readdir", (dir: string) => {
+        switch (dir) {
+          case PROJECT_ROOT:
+            return [{ name: ".mvcs", isDirectory: () => true }];
+          case path.join(
+            PROJECT_ROOT,
+            MVCS_REPOSITORY_NAME,
+            SNAPSHOTS_REPOSITORY_NAME,
+          ):
+            return [
+              { name: snapOne[0], isDirectory: () => true },
+              { name: snapTwo[0], isDirectory: () => true },
+            ];
+          case path.join(
+            PROJECT_ROOT,
+            MVCS_REPOSITORY_NAME,
+            SNAPSHOTS_REPOSITORY_NAME,
+            snapOne[0]!,
+          ):
+          case path.join(
+            PROJECT_ROOT,
+            MVCS_REPOSITORY_NAME,
+            SNAPSHOTS_REPOSITORY_NAME,
+            snapTwo[0]!,
+          ):
+            return [{ name: MESSAGE_FILE_NAME, isDirectory: () => false }];
+          default:
+            return [];
+        }
+      });
+
+      mock.method(fsPromises, "readFile", (filePath: string) => {
+        const timestamp = path.parse(filePath).dir.split(path.sep).at(-1)!;
+
+        switch (timestamp) {
+          case snapOne[0]:
+            return snapOne[1];
+          case snapTwo[0]:
+            return snapTwo[1];
+          default:
+            return "Unknown file";
+        }
+      });
+
+      const snapshots = await log();
+
+      assert.deepStrictEqual(snapshots, new Map([snapOne, snapTwo]));
+    });
+
+    it("rejects with a 'Not a MVCS repository' error when executed outside of an initialized .mvcs project", async function () {
+      mock.method(fsPromises, "readdir", () => []);
+
+      await assert.rejects(log(), {
+        message: `Not a MVCS repository: ${PROJECT_ROOT}`,
+      });
+    });
+
+    it("rejects with a 'Snapshots directory not found' error when executed in a .mvcs project without snapshots folder", async function () {
+      mock.method(fsPromises, "readdir", (dir: string) => {
+        switch (dir) {
+          case PROJECT_ROOT:
+            return [{ name: ".mvcs", isDirectory: () => true }];
+          case path.join(
+            PROJECT_ROOT,
+            MVCS_REPOSITORY_NAME,
+            SNAPSHOTS_REPOSITORY_NAME,
+          ):
+            const err = new Error("Not found");
+            (err as any).code = "ENOENT";
+            throw err;
+          default:
+            return [];
+        }
+      });
+
+      await assert.rejects(log(), {
+        message: `Snapshots directory not found`,
+      });
     });
   });
 

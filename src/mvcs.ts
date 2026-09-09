@@ -1,6 +1,8 @@
 import path from "node:path";
 import fsPromises from "node:fs/promises";
 import os from "node:os";
+import { snapshot } from "node:test";
+import { time } from "node:console";
 
 export const MVCS_REPOSITORY_NAME = ".mvcs";
 export const SNAPSHOTS_REPOSITORY_NAME = "snapshots";
@@ -39,10 +41,11 @@ export async function snap(message: string) {
   // TODO Improvement: save only modified, new and removed
   // TODO Improvement: save changes on the relative path instead of the root of the repository
   const workingDirectory = process.cwd();
-  const projectRootDirectory: string | null = await findMvcsRoot(workingDirectory);
+  const projectRootDirectory: string | null =
+    await findMvcsRoot(workingDirectory);
 
   if (projectRootDirectory === null) {
-    throw Error(`Not a MVCS repository: ${workingDirectory}`);
+    throw new Error(`Not a MVCS repository: ${workingDirectory}`);
   }
 
   const timestamp = Date.now().toString();
@@ -71,6 +74,57 @@ export async function snap(message: string) {
 }
 
 /**
+ * Finds all snapshots and its messages
+ */
+export async function log(): Promise<Map<string, string>> {
+  const workingDirectory = process.cwd();
+
+  // Find mvcs
+  const projectRootDirectory: string | null =
+    await findMvcsRoot(workingDirectory);
+
+  if (projectRootDirectory === null) {
+    throw new Error(`Not a MVCS repository: ${workingDirectory}`);
+  }
+
+  let snapshotDirPath = path.join(
+    projectRootDirectory,
+    MVCS_REPOSITORY_NAME,
+    SNAPSHOTS_REPOSITORY_NAME,
+  );
+
+  // Find snapshots directory
+  let snapshotDirContents = [];
+  try {
+    snapshotDirContents = await fsPromises.readdir(snapshotDirPath, {
+      withFileTypes: true,
+    });
+  } catch (err: any) {
+    if (err.code === "ENOENT") {
+      throw new Error(`Snapshots directory not found`);
+    }
+
+    throw err;
+  }
+
+  const snapshotsMap = new Map();
+
+  for (const { name: timestamp, isDirectory } of snapshotDirContents) {
+    if (isDirectory()) {
+      const messageFilePath = path.join(
+        snapshotDirPath,
+        timestamp,
+        MESSAGE_FILE_NAME,
+      );
+      const message = await fsPromises.readFile(messageFilePath);
+      snapshotsMap.set(timestamp, message);
+    }
+  }
+
+  return snapshotsMap;
+}
+
+/**
  * Return true ONLY if ".mvcs" is completely absent from the entire path tree
  *
  * @VisibleForTesting
@@ -88,9 +142,13 @@ export function isNotMvcsDirectory(source: string) {
 export async function findMvcsRoot(
   targetDirectory: string,
 ): Promise<string | null> {
-  const workingDirContents = await fsPromises.readdir(targetDirectory, {withFileTypes: true});
+  const workingDirContents = await fsPromises.readdir(targetDirectory, {
+    withFileTypes: true,
+  });
 
-  const isMvcsRoot = workingDirContents.some(result => result.name === MVCS_REPOSITORY_NAME && result.isDirectory());
+  const isMvcsRoot = workingDirContents.some(
+    (result) => result.name === MVCS_REPOSITORY_NAME && result.isDirectory(),
+  );
 
   if (isMvcsRoot) {
     return targetDirectory;
