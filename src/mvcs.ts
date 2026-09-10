@@ -1,12 +1,15 @@
 import path from "node:path";
 import fsPromises from "node:fs/promises";
 import os from "node:os";
-import { snapshot } from "node:test";
-import { time } from "node:console";
 
 export const MVCS_REPOSITORY_NAME = ".mvcs";
 export const SNAPSHOTS_REPOSITORY_NAME = "snapshots";
 export const MESSAGE_FILE_NAME = "snap_message.txt";
+
+export type SnapshotRecord = {
+  timestamp: string;
+  message: string;
+};
 
 /**
  * Initialize the mvcs repository in the current working directory
@@ -76,7 +79,7 @@ export async function snap(message: string) {
 /**
  * Finds all snapshots and its messages
  */
-export async function log(): Promise<Map<string, string>> {
+export async function log(): Promise<SnapshotRecord[]> {
   const workingDirectory = process.cwd();
 
   // Find mvcs
@@ -107,7 +110,7 @@ export async function log(): Promise<Map<string, string>> {
     throw err;
   }
 
-  const snapshotsMap = new Map();
+  const snapshotsRecords: SnapshotRecord[] = [];
 
   for (const { name: timestamp, isDirectory } of snapshotDirContents) {
     if (isDirectory()) {
@@ -116,12 +119,15 @@ export async function log(): Promise<Map<string, string>> {
         timestamp,
         MESSAGE_FILE_NAME,
       );
-      const message = await fsPromises.readFile(messageFilePath);
-      snapshotsMap.set(timestamp, message);
+      const message = (await fsPromises.readFile(messageFilePath)).toString();
+      snapshotsRecords.push({ timestamp, message });
     }
   }
 
-  return snapshotsMap;
+  return snapshotsRecords.sort(
+    (snapOne, snapTwo) =>
+      parseInt(snapTwo.timestamp) - parseInt(snapOne.timestamp),
+  );
 }
 
 /**

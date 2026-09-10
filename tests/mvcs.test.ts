@@ -9,6 +9,7 @@ import {
   MESSAGE_FILE_NAME,
   findMvcsRoot,
   log,
+  type SnapshotRecord,
 } from "../src/mvcs.js";
 import path from "path";
 
@@ -182,20 +183,20 @@ describe("mvcs core functions", function () {
 
       const snapshots = await log();
 
-      assert.deepStrictEqual(snapshots, new Map([]));
+      assert.deepStrictEqual(snapshots, []);
     });
 
     it("returns all snapshots in a oredered list with newest first when there are saved snapshots", async function () {
       const now = new Date(2026, 8, 8, 13, 0);
 
-      const snapOne: [string, string] = [
-        now.getTime().toString(),
-        "First snap message",
-      ];
-      const snapTwo: [string, string] = [
-        new Date(now).setHours(15).toString(),
-        "Second snap message",
-      ];
+      const snapOne: SnapshotRecord = {
+        timestamp: now.getTime().toString(),
+        message: "First snap message",
+      };
+      const snapTwo: SnapshotRecord = {
+        timestamp: new Date(now).setHours(15).toString(),
+        message: "Second snap message",
+      };
 
       mock.method(fsPromises, "readdir", (dir: string) => {
         switch (dir) {
@@ -207,20 +208,20 @@ describe("mvcs core functions", function () {
             SNAPSHOTS_REPOSITORY_NAME,
           ):
             return [
-              { name: snapOne[0], isDirectory: () => true },
-              { name: snapTwo[0], isDirectory: () => true },
+              { name: snapOne.timestamp, isDirectory: () => true },
+              { name: snapTwo.timestamp, isDirectory: () => true },
             ];
           case path.join(
             PROJECT_ROOT,
             MVCS_REPOSITORY_NAME,
             SNAPSHOTS_REPOSITORY_NAME,
-            snapOne[0]!,
+            snapOne.timestamp,
           ):
           case path.join(
             PROJECT_ROOT,
             MVCS_REPOSITORY_NAME,
             SNAPSHOTS_REPOSITORY_NAME,
-            snapTwo[0]!,
+            snapTwo.timestamp,
           ):
             return [{ name: MESSAGE_FILE_NAME, isDirectory: () => false }];
           default:
@@ -232,10 +233,10 @@ describe("mvcs core functions", function () {
         const timestamp = path.parse(filePath).dir.split(path.sep).at(-1)!;
 
         switch (timestamp) {
-          case snapOne[0]:
-            return snapOne[1];
-          case snapTwo[0]:
-            return snapTwo[1];
+          case snapOne.timestamp:
+            return snapOne.message;
+          case snapTwo.timestamp:
+            return snapTwo.message;
           default:
             return "Unknown file";
         }
@@ -243,7 +244,7 @@ describe("mvcs core functions", function () {
 
       const snapshots = await log();
 
-      assert.deepStrictEqual(snapshots, new Map([snapOne, snapTwo]));
+      assert.deepStrictEqual(snapshots, [snapTwo, snapOne]);
     });
 
     it("rejects with a 'Not a MVCS repository' error when executed outside of an initialized .mvcs project", async function () {
